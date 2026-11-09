@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="application-name" content="XuperTV" />
+  <title>XuperTV</title>
+  <link rel="stylesheet" href="css/tv.css" />
+  <style>
+    .tabs { display:flex; gap:8px; padding:0 24px 8px; flex-shrink:0; }
+    .tab {
+      background:#1c2230; color:#c5d0e6; border:2px solid transparent;
+      border-radius:10px; padding:10px 18px; font-size:16px; cursor:pointer;
+    }
+    .tab:focus, .tab.active { border-color:#60a5fa; color:#fff; background:#243044; }
+    .tab.active { box-shadow:0 0 0 2px rgba(96,165,250,.35); }
+    .links-panel {
+      display:none; flex-direction:column; gap:12px;
+      padding:16px 24px 32px; overflow-y:auto; flex:1;
+    }
+    .links-panel.active { display:flex; }
+    .links-panel textarea {
+      width:100%; min-height:220px; background:#0e121a; color:#dbe7ff;
+      border:2px solid #2a3348; border-radius:12px; padding:14px;
+      font-family:ui-monospace,monospace; font-size:13px; line-height:1.45;
+    }
+    .links-panel .row { display:flex; gap:10px; flex-wrap:wrap; }
+    .chip {
+      display:inline-block; background:#243044; color:#9fb2d0;
+      padding:4px 10px; border-radius:999px; font-size:12px; margin:2px;
+    }
+    .live-card .poster { aspect-ratio:16/10; object-fit:contain; background:#0a0c12; padding:8px; }
+    .badge {
+      position:absolute; top:8px; left:8px; background:#ef4444; color:#fff;
+      font-size:11px; font-weight:700; padding:3px 8px; border-radius:6px;
+    }
+    .card { position:relative; }
+
+    .filters {
+      display:flex; flex-wrap:wrap; gap:8px; padding:0 24px 12px; flex-shrink:0;
+    }
+    .filter-chip {
+      background:#1c2230; color:#9fb2d0; border:2px solid transparent;
+      border-radius:999px; padding:8px 14px; font-size:14px; cursor:pointer;
+    }
+    .filter-chip:focus, .filter-chip.active {
+      border-color:#60a5fa; color:#fff; background:#243044;
+    }
+    .load-more-wrap {
+      grid-column: 1 / -1; display:flex; justify-content:center; padding:16px 0 8px;
+    }
+    .load-more-wrap .btn { min-width: 200px; }
+    .mode-banner {
+      background:#1a2333; border:1px solid #2d3a52; color:#9fb2d0;
+      padding:10px 14px; border-radius:10px; font-size:14px; margin-bottom:8px;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">Xuper<span>TV</span></div>
+    <div class="search-box">
+      <input id="q" type="text" placeholder="Buscar…" autocomplete="off" />
+      <button class="btn primary" id="btnSearch" tabindex="0">Buscar</button>
+    </div>
+    <button class="btn" id="btnSession" tabindex="0">Sesión</button>
+    <div class="status" id="status">Iniciando…</div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="movies" tabindex="0">Películas</button>
+    <button class="tab" data-tab="series" tabindex="0">Series</button>
+    <button class="tab" data-tab="live" tabindex="0">En vivo</button>
+    <button class="tab" data-tab="links" tabindex="0">Solo enlaces</button>
+  </nav>
+
+  <div class="filters" id="filters"></div>
+
+  <main class="main">
+    <div class="grid-wrap" id="gridWrap">
+      <div class="section-title" id="sectionTitle">Catálogo</div>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="links-panel" id="linksPanel">
+      <div class="mode-banner">
+        Modo <b>Solo enlaces</b>: resuelve el stream y te da URL + headers para VLC, Kodi u otro player IPTV.
+        No intenta reproducir en el navegador.
+      </div>
+      <div class="search-box" style="max-width:100%">
+        <input id="linksQ" type="text" placeholder="ID de contenido, nombre, o channelCode…" />
+        <button class="btn primary" id="btnLinksResolve" tabindex="0">Resolver</button>
+        <button class="btn" id="btnLinksFromSelection" tabindex="0">Usar selección del catálogo</button>
+      </div>
+      <div id="linksMeta"></div>
+      <textarea id="linksOut" readonly placeholder="Aquí aparecerán la URL y los headers…"></textarea>
+      <div class="row">
+        <button class="btn primary" id="btnLinksWvc" tabindex="0">Web Video Caster</button>
+        <button class="btn" id="btnCopyAll" tabindex="0">Copiar todo</button>
+        <button class="btn" id="btnCopyUrl" tabindex="0">Solo URL</button>
+        <button class="btn" id="btnClearLinks" tabindex="0">Limpiar</button>
+      </div>
+    </div>
+
+    <div class="player-screen" id="playerScreen">
+      <video id="video" controls playsinline></video>
+      <div class="player-bar">
+        <div class="info">
+          <div class="name" id="playName">—</div>
+          <div class="tech" id="playTech">—</div>
+        </div>
+        <button class="btn primary" id="btnWvc" tabindex="0">Web Video Caster</button>
+        <button class="btn" id="btnToLinks" tabindex="0">Ver enlace</button>
+        <button class="btn" id="btnCopy" tabindex="0">Copiar URL</button>
+        <button class="btn danger" id="btnClose" tabindex="0">Cerrar</button>
+      </div>
+    </div>
+  </main>
+
+  <div class="overlay-msg" id="msg">
+    <div class="spin" id="msgSpin"></div>
+    <div id="msgText">Cargando…</div>
+  </div>
+  <div class="help">Si no reproduce en el navegador: Ver enlace → Web Video Caster / VLC (normal con H.265)</div>
+
+  <script src="js/config.js"></script>
+  <script src="js/crypto-portal.js"></script>
+  <script src="js/portal.js"></script>
+  <script>
+(function () {
+  "use strict";
+
+  var FALLBACK = [
+    { id: "1ADC41EE227C04A2386102267CBB00FA", title: "Terrifier", type: "movie", category: "destacado", score: "—", year: "—", poster: "" }
+  ];
+
+  var catalog = FALLBACK.slice();
+  var liveChannels = [];
+  var livePage = 1;
+  var liveHasMore = false;
+  var liveLoading = false;
+  var liveColumnId = 76182;
+  var currentTab = "movies";
+  var currentGenre = "all";
+  var lastResolved = null;
+  var selectedItem = null;
+  var linksMode = false;
+
+  var GENRE_PRESETS = [
+    "all", "Action", "Adventure", "Animation", "Anime", "Comedy", "Crime",
+    "Drama", "Family", "Fantasy", "Horror", "Romance", "Sci-Fi", "Thriller"
+  ];
+  var GENRE_LABELS = {
+    all: "Todos",
+    Action: "Acción",
+    Adventure: "Aventura",
+    Animation: "Animación",
+    Anime: "Anime",
+    Comedy: "Comedia",
+    Crime: "Crimen",
+    Drama: "Drama",
+    Family: "Familiar",
+    Fantasy: "Fantasía",
+    Horror: "Terror",
+    Romance: "Romance",
+    "Sci-Fi": "Ciencia ficción",
+    Thriller: "Suspenso"
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var statusEl = $("status");
+  var grid = $("grid");
+  var gridWrap = $("gridWrap");
+  var linksPanel = $("linksPanel");
+  var sectionTitle = $("sectionTitle");
+  var playerScreen = $("playerScreen");
+  var video = $("video");
+  var msg = $("msg");
+  var msgText = $("msgText");
+  var msgSpin = $("msgSpin");
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = "status" + (cls ? " " + cls : "");
+  }
+  function showMsg(text, spinning) {
+    msgText.textContent = text || "…";
+    msgSpin.style.display = spinning ? "block" : "none";
+    msg.classList.add("show");
+  }
+  function hideMsg() { msg.classList.remove("show"); }
+  function escapeHtml(s) {
+    return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+  function posterUrl(item) {
+    if (item.poster && /^https?:/i.test(item.poster)) return item.poster;
+    if (item.logo && /^https?:/i.test(item.logo)) return item.logo;
+    var t = (item.title || item.name || "?").slice(0, 20);
+    return "data:image/svg+xml," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect fill="#1c2230" width="100%" height="100%"/>' +
+      '<text x="50%" y="50%" fill="#8b97b0" font-size="20" text-anchor="middle" font-family="sans-serif">' +
+      t.replace(/[<>&]/g,"") + "</text></svg>"
+    );
+  }
+
+  function baseCatalog() {
+    if (currentTab === "movies") {
+      return catalog.filter(function (c) {
+        var ty = String(c.type || "").toLowerCase();
+        var k = String(c.kind || "").toLowerCase();
+        return ty === "movie" || k === "película" || k === "pelicula" ||
+          (ty !== "teleplay" && ty !== "series" && k !== "serie" && k !== "anime" && !c.channelCode);
+      });
+    }
+    if (currentTab === "series") {
+      return catalog.filter(function (c) {
+        var ty = String(c.type || "").toLowerCase();
+        var k = String(c.kind || "").toLowerCase();
+        return ty === "series" || ty === "teleplay" || k === "serie" || k === "anime";
+      });
+    }
+    return catalog;
+  }
+
+  function filteredCatalog() {
+    var items = baseCatalog();
+    if (currentGenre && currentGenre !== "all") {
+      var g = currentGenre.toLowerCase();
+      items = items.filter(function (c) {
+        var gs = (c.genres || []).map(function (x) { return String(x).toLowerCase(); });
+        if (gs.indexOf(g) >= 0) return true;
+        // also match category tokens
+        var cat = String(c.category || "").toLowerCase();
+        if (cat.indexOf(g) >= 0) return true;
+        // spanish aliases
+        if (g === "horror" && (gs.indexOf("terror") >= 0 || cat.indexOf("terror") >= 0)) return true;
+        if (g === "animation" && (gs.indexOf("animación") >= 0 || cat.indexOf("infantil") >= 0)) return true;
+        return false;
+      });
+    }
+    return items;
+  }
+
+  function renderFilters() {
+    var box = $("filters");
+    if (!box) return;
+    box.innerHTML = "";
+    if (currentTab === "live") {
+      var more = document.createElement("button");
+      more.className = "filter-chip" + (liveHasMore ? "" : "");
+      more.tabIndex = 0;
+      more.textContent = liveHasMore ? ("Cargar más (pág. " + (livePage + 1) + ")") : ("Canales: " + liveChannels.length);
+      more.disabled = !liveHasMore || liveLoading;
+      more.addEventListener("click", function () { if (liveHasMore) loadLive(true); });
+      box.appendChild(more);
+      var reload = document.createElement("button");
+      reload.className = "filter-chip";
+      reload.tabIndex = 0;
+      reload.textContent = "Recargar";
+      reload.addEventListener("click", function () { liveChannels = []; livePage = 1; loadLive(false); });
+      box.appendChild(reload);
+      return;
+    }
+    if (currentTab === "links") {
+      box.innerHTML = "";
+      return;
+    }
+    // genre chips for movies/series
+    GENRE_PRESETS.forEach(function (g) {
+      var count = 0;
+      if (g === "all") count = baseCatalog().length;
+      else {
+        var tmp = currentGenre;
+        currentGenre = g;
+        count = filteredCatalog().length;
+        currentGenre = tmp;
+      }
+      if (g !== "all" && count === 0) return;
+      var b = document.createElement("button");
+      b.className = "filter-chip" + (currentGenre === g ? " active" : "");
+      b.tabIndex = 0;
+      b.textContent = (GENRE_LABELS[g] || g) + " (" + count + ")";
+      b.addEventListener("click", function () {
+        currentGenre = g;
+        renderFilters();
+        var items = filteredCatalog();
+        renderGrid(items, (currentTab === "series" ? "Series" : "Películas") + " · " + (GENRE_LABELS[g] || g) + " (" + items.length + ")");
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function renderGrid(items, title) {
+    sectionTitle.textContent = title || "Catálogo";
+    grid.innerHTML = "";
+    items.forEach(function (item, idx) {
+      var isLive = item.kind === "live" || item.channelCode;
+      var card = document.createElement("div");
+      card.className = "card" + (isLive ? " live-card" : "");
+      card.tabIndex = 0;
+      card.dataset.idx = String(idx);
+      var titleTxt = item.title || item.name || "Sin título";
+      card.innerHTML =
+        (isLive ? '<span class="badge">EN VIVO</span>' : "") +
+        '<img class="poster" loading="lazy" src="' + posterUrl(item) + '" alt=""/>' +
+        '<div class="meta"><div class="title">' + escapeHtml(titleTxt) + "</div>" +
+        '<div class="sub">' + escapeHtml(
+          isLive
+            ? ("#" + (item.index || "") + (item.uhd ? " · UHD" : ""))
+            : ((item.score && item.score !== "—" ? "★ " + item.score + " · " : "") + (item.year || item.category || item.type || ""))
+        ) + "</div></div>";
+      card.addEventListener("click", function () { onSelect(item); });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.keyCode === 13) onSelect(item);
+      });
+      grid.appendChild(card);
+    });
+    var first = grid.querySelector(".card");
+    if (first) first.focus();
+  }
+
+  function onSelect(item) {
+    selectedItem = item;
+    if (currentTab === "links" || linksMode) {
+      resolveToLinks(item);
+      return;
+    }
+    playItem(item);
+  }
+
+  function formatLinkBlock(stream) {
+    var c = (stream.candidates && stream.candidates[0]) || { url: stream.url, auth: stream.headers && stream.headers["Content-Auth"] };
+    var lines = [];
+    lines.push("# " + (stream.name || stream.channelCode || "stream"));
+    if (stream.quality || stream.codec) lines.push("# " + [stream.quality, stream.codec, stream.audio, stream.fmt || stream.mime].filter(Boolean).join(" · "));
+    lines.push("");
+    lines.push("URL=");
+    lines.push(c.url);
+    lines.push("");
+    lines.push("Content-Auth=");
+    lines.push(c.auth || (stream.headers && stream.headers["Content-Auth"]) || "");
+    lines.push("");
+    lines.push("Content-License=");
+    lines.push(stream.license || (stream.headers && stream.headers["Content-License"]) || "");
+    lines.push("");
+    lines.push("User-Agent=" + MagisPortal.UA_CDN);
+    lines.push("App=" + MagisPortal.APP_ID);
+    lines.push("App-Version=" + MagisPortal.APK_VERSION);
+    if (stream.kind === "live") lines.push("X-Buffer=0");
+    lines.push("");
+    lines.push("# VLC: Medio → Abrir ubicación de red → mostrar más opciones → encabezados HTTP");
+    lines.push("# Caducidad aproximada de tokens: minutos / pocas horas");
+    return lines.join("\n");
+  }
+
+  function resolveToLinks(item) {
+    showMsg("Resolviendo enlace…", true);
+    var p;
+    if (item.channelCode || item.kind === "live") {
+      p = MagisPortal.resolveLive(item.channelCode || item.id);
+    } else {
+      p = MagisPortal.resolveSmart(item.id || item.contentId);
+    }
+    p.then(function (stream) {
+      hideMsg();
+      lastResolved = stream;
+      $("linksOut").value = formatLinkBlock(stream);
+      $("linksMeta").innerHTML =
+        '<span class="chip">' + escapeHtml(stream.name || "") + "</span>" +
+        (stream.quality ? '<span class="chip">' + escapeHtml(stream.quality) + "</span>" : "") +
+        (stream.codec ? '<span class="chip">' + escapeHtml(stream.codec) + "</span>" : "") +
+        (stream.kind === "live" ? '<span class="chip">LIVE</span>' : "") +
+        '<span class="chip">user ' + escapeHtml((stream.session && stream.session.userId) || "") + "</span>";
+      setStatus("Enlace listo", "ok");
+      switchTab("links", true);
+      $("btnCopyAll").focus();
+    }).catch(function (err) {
+      hideMsg();
+      setStatus("Error: " + err.message, "err");
+      $("linksOut").value = "Error: " + err.message;
+      showMsg(err.message, false);
+      setTimeout(hideMsg, 3000);
+    });
+  }
+
+  function playItem(item) {
+    showMsg("Resolviendo «" + (item.title || item.name) + "»…", true);
+    var p = (item.channelCode || item.kind === "live")
+      ? MagisPortal.resolveLive(item.channelCode)
+      : MagisPortal.resolveSmart(item.id);
+    p.then(function (stream) {
+      lastResolved = stream;
+      hideMsg();
+      openPlayer(stream, item);
+    }).catch(function (err) {
+      hideMsg();
+      setStatus("Error: " + (err.message || err), "err");
+      showMsg("Error: " + (err.message || err), false);
+      setTimeout(hideMsg, 3500);
+    });
+  }
+
+  function openPlayer(stream, item) {
+    $("playName").textContent = stream.name || item.title || item.name || "—";
+    $("playTech").textContent = [stream.quality, stream.codec, stream.audio, stream.fmt || stream.mime, stream.kind].filter(Boolean).join(" · ");
+    playerScreen.classList.add("active");
+    video.removeAttribute("src");
+    video.load();
+
+    var candidates = stream.candidates || [{ url: stream.url, auth: stream.headers && stream.headers["Content-Auth"], host: "?" }];
+    var idx = 0;
+
+    function playUrl(u, via) {
+      video.src = u;
+      var onErr = function () {
+        video.removeEventListener("error", onErr);
+        video.removeEventListener("loadeddata", onOk);
+        tryNext();
+      };
+      var onOk = function () {
+        video.removeEventListener("loadeddata", onOk);
+        video.removeEventListener("error", onErr);
+        setStatus("Reproduciendo" + (via ? " (" + via + ")" : ""), "ok");
+      };
+      video.addEventListener("error", onErr);
+      video.addEventListener("loadeddata", onOk);
+      video.play().catch(function () {});
+    }
+
+    function tryNext() {
+      if (idx >= candidates.length) {
+        setStatus("Navegador no reproduce · usa player externo", "err");
+        if (lastResolved) {
+          $("linksOut").value = formatLinkBlock(lastResolved);
+        }
+        showMsg("El navegador no puede reproducir este formato (suele ser H.265/TS). Usa «Ver enlace» o Web Video Caster / VLC.", false);
+        return;
+      }
+      var c = candidates[idx++];
+      setStatus("CDN " + (c.host || "") + "…");
+      var proxyBase = (window.XUPER_CONFIG && window.XUPER_CONFIG.proxyBase) || "";
+      if (proxyBase) {
+        var proxied = proxyBase.replace(/\/$/, "") + "/stream?url=" + encodeURIComponent(c.url) +
+          "&auth=" + encodeURIComponent(c.auth || "") +
+          "&license=" + encodeURIComponent(stream.license || (stream.headers && stream.headers["Content-License"]) || "");
+        playUrl(proxied, "proxy");
+        return;
+      }
+      if (location.protocol === "http:" || location.protocol === "https:") {
+        var local = location.origin + "/proxy?url=" + encodeURIComponent(c.url) +
+          "&auth=" + encodeURIComponent(c.auth || "") +
+          "&license=" + encodeURIComponent(stream.license || "");
+        playUrl(local, "proxy");
+        return;
+      }
+      playUrl(c.url);
+    }
+    tryNext();
+    $("btnClose").focus();
+  }
+
+  function closePlayer() {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    playerScreen.classList.remove("active");
+    hideMsg();
+    setStatus("Listo", "ok");
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); resolve(); }
+      catch (e) { reject(e); }
+      document.body.removeChild(ta);
+    });
+  }
+
+  function copyResolved() {
+    if (!lastResolved) return;
+    copyText(formatLinkBlock(lastResolved)).then(function () {
+      showMsg("Copiado", false);
+      setTimeout(hideMsg, 1500);
+    });
+  }
+
+  function loadLive(append) {
+    if (liveLoading) return;
+    liveLoading = true;
+    var page = append ? livePage + 1 : 1;
+    showMsg(append ? ("Más canales… pág. " + page) : "Cargando canales…", true);
+    MagisPortal.getLiveChannels(liveColumnId, page, 40)
+      .then(function (res) {
+        var ch = res.channels || [];
+        if (append) {
+          var seen = {};
+          liveChannels.forEach(function (c) { seen[c.channelCode] = true; });
+          ch.forEach(function (c) {
+            if (!seen[c.channelCode]) { liveChannels.push(c); seen[c.channelCode] = true; }
+          });
+          livePage = page;
+        } else {
+          liveChannels = ch;
+          livePage = 1;
+        }
+        liveHasMore = !!res.hasMore;
+        liveLoading = false;
+        hideMsg();
+        setStatus(liveChannels.length + " canales" + (liveHasMore ? " · hay más" : ""), "ok");
+        renderGrid(liveChannels, "En vivo (" + liveChannels.length + ")");
+        // append load-more card inside grid
+        if (liveHasMore) {
+          var wrap = document.createElement("div");
+          wrap.className = "load-more-wrap";
+          var btn = document.createElement("button");
+          btn.className = "btn primary";
+          btn.tabIndex = 0;
+          btn.textContent = "Cargar más canales";
+          btn.addEventListener("click", function () { loadLive(true); });
+          wrap.appendChild(btn);
+          grid.appendChild(wrap);
+        }
+        renderFilters();
+      })
+      .catch(function (err) {
+        liveLoading = false;
+        hideMsg();
+        setStatus("Live: " + err.message, "err");
+        showMsg("No se pudieron cargar canales: " + err.message, false);
+        setTimeout(hideMsg, 3000);
+        if (!append) renderGrid([], "En vivo (error)");
+        renderFilters();
+      });
+  }
+
+  function switchTab(tab, keepLinksData) {
+    currentTab = tab;
+    linksMode = tab === "links";
+    if (tab !== "movies" && tab !== "series") currentGenre = "all";
+  
+  function playableUrlForExternal(stream) {
+    if (!stream) return "";
+    var c = (stream.candidates && stream.candidates[0]) || { url: stream.url, auth: stream.headers && stream.headers["Content-Auth"] };
+    var proxyBase = (window.XUPER_CONFIG && window.XUPER_CONFIG.proxyBase) || "";
+    if (proxyBase) {
+      var license = stream.license || (stream.headers && stream.headers["Content-License"]) || "";
+      return proxyBase.replace(/\/$/, "") + "/stream?url=" + encodeURIComponent(c.url) +
+        "&auth=" + encodeURIComponent(c.auth || "") +
+        "&license=" + encodeURIComponent(license);
+    }
+    return c.url || stream.url || "";
+  }
+
+  function openInWebVideoCaster(stream) {
+    if (!stream) {
+      showMsg("Primero resuelve un título", false);
+      setTimeout(hideMsg, 2000);
+      return;
+    }
+    var playUrl = playableUrlForExternal(stream);
+    if (!playUrl) {
+      showMsg("No hay URL de reproducción", false);
+      setTimeout(hideMsg, 2000);
+      return;
+    }
+    // Intent Android → Web Video Caster (com.instantbits.cast.webvideo)
+    var intent = "intent:" + playUrl + "#Intent;action=android.intent.action.VIEW;" +
+      "type=video/*;package=com.instantbits.cast.webvideo;S.browser_fallback_url=" +
+      encodeURIComponent(playUrl) + ";end";
+    showMsg("Abriendo Web Video Caster…", false);
+    try {
+      window.location.href = intent;
+    } catch (e) {}
+    // También copiar por si el intent no está disponible (iOS / PC)
+    setTimeout(function () {
+      copyText(playUrl).then(function () {
+        showMsg("Si no abrió Caster, la URL se copió al portapapeles", false);
+        setTimeout(hideMsg, 2500);
+      }).catch(function () {
+        hideMsg();
+      });
+    }, 800);
+  }
+
+  function yearOf(item) {
+    var y = parseInt(String(item.year || item.releaseDate || "").slice(0, 4), 10);
+    return isNaN(y) ? 0 : y;
+  }
+
+  function sortByNewest(items) {
+    return items.slice().sort(function (a, b) {
+      var dy = yearOf(b) - yearOf(a);
+      if (dy !== 0) return dy;
+      return String(a.title || "").localeCompare(String(b.title || ""), "es");
+    });
+  }
+
+
+  document.querySelectorAll(".tab").forEach(function (t) {
+      t.classList.toggle("active", t.getAttribute("data-tab") === tab);
+    });
+    if (tab === "links") {
+      gridWrap.style.display = "none";
+      linksPanel.classList.add("active");
+      renderFilters();
+      return;
+    }
+    linksPanel.classList.remove("active");
+    gridWrap.style.display = "";
+    if (tab === "live") {
+      if (!liveChannels.length) loadLive(false);
+      else {
+        renderGrid(liveChannels, "En vivo (" + liveChannels.length + ")");
+        if (liveHasMore) {
+          var wrap = document.createElement("div");
+          wrap.className = "load-more-wrap";
+          var btn = document.createElement("button");
+          btn.className = "btn primary";
+          btn.tabIndex = 0;
+          btn.textContent = "Cargar más canales";
+          btn.addEventListener("click", function () { loadLive(true); });
+          wrap.appendChild(btn);
+          grid.appendChild(wrap);
+        }
+      }
+      renderFilters();
+      return;
+    }
+    var items = filteredCatalog();
+    var label = (tab === "series" ? "Series" : "Películas");
+    if (currentGenre !== "all") label += " · " + (GENRE_LABELS[currentGenre] || currentGenre);
+    renderGrid(items, label + " (" + items.length + ")");
+    renderFilters();
+  }
+
+  function doSearch() {
+    var q = $("q").value.trim();
+    if (!q) {
+      switchTab(currentTab === "links" ? "movies" : currentTab);
+      return;
+    }
+    if (currentTab === "live") {
+      var filtered = liveChannels.filter(function (c) {
+        return (c.name || "").toLowerCase().indexOf(q.toLowerCase()) >= 0;
+      });
+      renderGrid(filtered, "Canales: " + q);
+      return;
+    }
+    showMsg("Buscando «" + q + "»…", true);
+    MagisPortal.search(q)
+      .then(function (res) {
+        hideMsg();
+        var items = [];
+        var list = res.list || res.records || res.dataList || res.resultList || res.data || [];
+        if (!Array.isArray(list)) list = [];
+        list.forEach(function (row) {
+          var id = row.contentId || row.id || row.programContentId;
+          var title = row.name || row.title || row.contentName;
+          if (id && title) {
+            var year = row.year || row.releaseTime || row.releaseDate || row.releaseYear || "—";
+            if (year && year !== "—") year = String(year).slice(0, 4);
+            items.push({
+              id: id,
+              title: title,
+              score: row.score || row.rating || "—",
+              year: year,
+              poster: (row.posterList && row.posterList[0] && row.posterList[0].fileUrl) || row.poster || "",
+              type: row.type || row.contentType || "movie",
+              category: "búsqueda"
+            });
+          }
+        });
+        if (!items.length) {
+          var local = catalog.filter(function (c) {
+            return (c.title || "").toLowerCase().indexOf(q.toLowerCase()) >= 0;
+          });
+          local = sortByNewest(local);
+          renderGrid(local, "Local: " + q);
+          setStatus(local.length ? local.length + " local" : "Sin resultados", local.length ? "ok" : "err");
+        } else {
+          items = sortByNewest(items);
+          setStatus(items.length + " resultados (más recientes primero)", "ok");
+          renderGrid(items, "Búsqueda: " + q);
+        }
+      })
+      .catch(function (err) {
+        hideMsg();
+        var local = sortByNewest(catalog.filter(function (c) {
+          return (c.title || "").toLowerCase().indexOf(q.toLowerCase()) >= 0;
+        }));
+        renderGrid(local, "Local: " + q);
+        setStatus("Búsqueda API falló · local " + local.length, "err");
+      });
+  }
+
+  function refreshSession() {
+    showMsg("Sesión…", true);
+    MagisPortal.ensureSession()
+      .then(function (s) {
+        hideMsg();
+        var left = s.exp ? Math.max(0, Math.round((s.exp - Date.now() / 1000) / 60)) : "?";
+        setStatus("Sesión OK · " + left + " min", "ok");
+      })
+      .catch(function (err) {
+        hideMsg();
+        setStatus("Sesión: " + err.message, "err");
+      });
+  }
+
+  function resolveLinksInput() {
+    var raw = $("linksQ").value.trim();
+    if (!raw) {
+      showMsg("Escribe un ID o channelCode", false);
+      setTimeout(hideMsg, 2000);
+      return;
+    }
+    if (/^[A-F0-9]{32}$/i.test(raw)) {
+      resolveToLinks({ id: raw.toUpperCase(), title: raw });
+      return;
+    }
+    if (/^\d+$/.test(raw) || /^[A-Za-z0-9_-]{3,}$/.test(raw)) {
+      resolveToLinks({ channelCode: raw, name: raw, kind: "live" });
+      return;
+    }
+    showMsg("Buscando…", true);
+    MagisPortal.search(raw).then(function (res) {
+      hideMsg();
+      var list = res.list || res.records || res.dataList || res.resultList || res.data || [];
+      if (!Array.isArray(list) || !list.length) throw new Error("sin resultados");
+      var row = list[0];
+      var id = row.contentId || row.id;
+      resolveToLinks({ id: id, title: row.name || row.title || id });
+    }).catch(function (e) {
+      hideMsg();
+      setStatus(e.message, "err");
+    });
+  }
+
+
+  function playableUrlForExternal(stream) {
+    if (!stream) return "";
+    var c = (stream.candidates && stream.candidates[0]) || { url: stream.url, auth: stream.headers && stream.headers["Content-Auth"] };
+    var proxyBase = (window.XUPER_CONFIG && window.XUPER_CONFIG.proxyBase) || "";
+    if (proxyBase) {
+      var license = stream.license || (stream.headers && stream.headers["Content-License"]) || "";
+      return proxyBase.replace(/\/$/, "") + "/stream?url=" + encodeURIComponent(c.url) +
+        "&auth=" + encodeURIComponent(c.auth || "") +
+        "&license=" + encodeURIComponent(license);
+    }
+    return c.url || stream.url || "";
+  }
+
+  function openInWebVideoCaster(stream) {
+    if (!stream) {
+      showMsg("Primero resuelve un título", false);
+      setTimeout(hideMsg, 2000);
+      return;
+    }
+    var playUrl = playableUrlForExternal(stream);
+    if (!playUrl) {
+      showMsg("No hay URL de reproducción", false);
+      setTimeout(hideMsg, 2000);
+      return;
+    }
+    // Intent Android → Web Video Caster (com.instantbits.cast.webvideo)
+    var intent = "intent:" + playUrl + "#Intent;action=android.intent.action.VIEW;" +
+      "type=video/*;package=com.instantbits.cast.webvideo;S.browser_fallback_url=" +
+      encodeURIComponent(playUrl) + ";end";
+    showMsg("Abriendo Web Video Caster…", false);
+    try {
+      window.location.href = intent;
+    } catch (e) {}
+    // También copiar por si el intent no está disponible (iOS / PC)
+    setTimeout(function () {
+      copyText(playUrl).then(function () {
+        showMsg("Si no abrió Caster, la URL se copió al portapapeles", false);
+        setTimeout(hideMsg, 2500);
+      }).catch(function () {
+        hideMsg();
+      });
+    }, 800);
+  }
+
+  function yearOf(item) {
+    var y = parseInt(String(item.year || item.releaseDate || "").slice(0, 4), 10);
+    return isNaN(y) ? 0 : y;
+  }
+
+  function sortByNewest(items) {
+    return items.slice().sort(function (a, b) {
+      var dy = yearOf(b) - yearOf(a);
+      if (dy !== 0) return dy;
+      return String(a.title || "").localeCompare(String(b.title || ""), "es");
+    });
+  }
+
+
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.addEventListener("click", function () { switchTab(t.getAttribute("data-tab")); });
+    t.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") switchTab(t.getAttribute("data-tab"));
+    });
+  });
+  $("btnSearch").addEventListener("click", doSearch);
+  $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
+  $("btnSession").addEventListener("click", refreshSession);
+  $("btnClose").addEventListener("click", closePlayer);
+  $("btnCopy").addEventListener("click", copyResolved);
+  var btnWvc = $("btnWvc");
+  if (btnWvc) btnWvc.addEventListener("click", function () { openInWebVideoCaster(lastResolved); });
+  var btnLinksWvc = $("btnLinksWvc");
+  if (btnLinksWvc) btnLinksWvc.addEventListener("click", function () { openInWebVideoCaster(lastResolved); });
+  $("btnToLinks").addEventListener("click", function () {
+    if (!lastResolved) return;
+    $("linksOut").value = formatLinkBlock(lastResolved);
+    closePlayer();
+    switchTab("links", true);
+  });
+  $("btnLinksResolve").addEventListener("click", resolveLinksInput);
+  $("btnLinksFromSelection").addEventListener("click", function () {
+    if (selectedItem) resolveToLinks(selectedItem);
+    else {
+      showMsg("Elige antes un título en Películas / Series / En vivo", false);
+      setTimeout(hideMsg, 2500);
+    }
+  });
+  $("btnCopyAll").addEventListener("click", function () {
+    copyText($("linksOut").value).then(function () {
+      showMsg("Copiado", false); setTimeout(hideMsg, 1200);
+    });
+  });
+  $("btnCopyUrl").addEventListener("click", function () {
+    var m = $("linksOut").value.match(/URL=\n([^\n]+)/);
+    if (m) copyText(m[1]).then(function () { showMsg("URL copiada", false); setTimeout(hideMsg, 1200); });
+  });
+  $("btnClearLinks").addEventListener("click", function () {
+    $("linksOut").value = "";
+    $("linksMeta").innerHTML = "";
+  });
+
+  document.addEventListener("keydown", function (e) {
+    var key = e.key || e.keyCode;
+    if (key === "Escape" || key === "Backspace" || key === 27 || key === 461) {
+      if (playerScreen.classList.contains("active")) {
+        e.preventDefault();
+        closePlayer();
+      }
+    }
+  });
+
+  fetch("js/catalog.json")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (Array.isArray(data) && data.length) catalog = data;
+      switchTab("movies");
+    })
+    .catch(function () { switchTab("movies"); });
+
+  refreshSession();
+})();
+  </script>
+</body>
+</html>
