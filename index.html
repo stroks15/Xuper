@@ -63,8 +63,8 @@
       <input id="q" type="text" placeholder="Buscar…" autocomplete="off" />
       <button class="btn primary" id="btnSearch" tabindex="0">Buscar</button>
     </div>
-    <button class="btn" id="btnSession" tabindex="0">Sesión</button>
-    <div class="status" id="status">Iniciando…</div>
+    <button class="btn primary" id="btnSession" tabindex="0">Conectar con Kino</button>
+    <div class="status" id="status">Usa Kino para vincular tu sesión</div>
   </header>
 
   <nav class="tabs" id="tabs">
@@ -700,18 +700,15 @@
       });
   }
 
+  var KINO_TV_URL = "https://kinoverse.app/tv/";
+
+  function openKinoPairing() {
+    setStatus("Abriendo Kinoverse para vincular tu teléfono…", "ok");
+    window.open(KINO_TV_URL, "_blank", "noopener");
+  }
+
   function refreshSession() {
-    showMsg("Sesión…", true);
-    MagisPortal.ensureSession()
-      .then(function (s) {
-        hideMsg();
-        var left = s.exp ? Math.max(0, Math.round((s.exp - Date.now() / 1000) / 60)) : "?";
-        setStatus("Sesión OK · " + left + " min", "ok");
-      })
-      .catch(function (err) {
-        hideMsg();
-        setStatus("Sesión: " + err.message, "err");
-      });
+    setStatus("La sesión se vincula desde Kino en tu teléfono", "ok");
   }
 
   function resolveLinksInput() {
@@ -810,7 +807,7 @@
   });
   $("btnSearch").addEventListener("click", doSearch);
   $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
-  $("btnSession").addEventListener("click", refreshSession);
+  $("btnSession").addEventListener("click", openKinoPairing);
   $("btnClose").addEventListener("click", closePlayer);
   $("btnCopy").addEventListener("click", copyResolved);
   var btnWvc = $("btnWvc");
@@ -863,7 +860,7 @@
     })
     .catch(function () { switchTab("movies"); });
 
-  refreshSession();
+  setStatus("Conecta Kino desde el botón para vincular tu teléfono", "ok");
 })();
   </script>
 </body>
