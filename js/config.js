@@ -10,5 +10,5 @@
  * Déjalo vacío ("") para intentar conexión directa.
  */
 window.XUPER_CONFIG = {
-  proxyBase: "https://xupertv-web.ztacc02.workers.dev/"
+  proxyBase: "https://xupertv-proxy.dexterh4ck.workers.dev"
 };
